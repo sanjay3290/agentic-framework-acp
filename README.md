@@ -6,7 +6,8 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-158%20passed-brightgreen.svg)](#testing)
+[![CI](https://github.com/sanjay3290/agentic-framework-acp/actions/workflows/ci.yml/badge.svg)](https://github.com/sanjay3290/agentic-framework-acp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/acp-agent-framework.svg)](https://pypi.org/project/acp-agent-framework/)
 [![ACP Protocol](https://img.shields.io/badge/protocol-ACP-purple.svg)](https://agentclientprotocol.com/)
 
 The first open-source Python framework for building agents that speak the
@@ -47,6 +48,14 @@ The first open-source Python framework for building agents that speak the
 ## Install
 
 ```bash
+pip install acp-agent-framework
+```
+
+For development:
+
+```bash
+git clone https://github.com/sanjay3290/agentic-framework-acp.git
+cd agentic-framework-acp
 pip install -e ".[dev]"
 ```
 
