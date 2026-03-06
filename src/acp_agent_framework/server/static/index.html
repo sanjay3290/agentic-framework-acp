@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACP Agent Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+  <style>
+    .event-card { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    #prompt-input { field-sizing: content; min-height: 2.5rem; max-height: 10rem; }
+    .session-item.active { background-color: rgb(55 65 81); }
+  </style>
+</head>
+<body class="dark h-full bg-gray-950 text-gray-100">
+  <div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-72 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+      <div class="p-4 border-b border-gray-800">
+        <h1 class="text-lg font-semibold text-white">ACP Agent Dashboard</h1>
+      </div>
+
+      <!-- New Session -->
+      <div class="p-4 border-b border-gray-800 space-y-2">
+        <label class="block text-xs text-gray-400 uppercase tracking-wide">New Session</label>
+        <input id="cwd-input" type="text" placeholder="Working directory (cwd)"
+          class="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-100 placeholder-gray-500">
+        <button id="create-btn"
+          class="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">
+          Create Session
+        </button>
+      </div>
+
+      <!-- Session List -->
+      <div class="flex-1 overflow-y-auto">
+        <div class="p-3">
+          <label class="block text-xs text-gray-400 uppercase tracking-wide mb-2">Sessions</label>
+          <ul id="session-list" class="space-y-1"></ul>
+          <p id="no-sessions" class="text-sm text-gray-500 italic">No sessions yet</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0">
+      <!-- Header -->
+      <header id="main-header" class="px-6 py-3 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
+        <div>
+          <span id="header-session" class="text-sm text-gray-400">Select or create a session to begin</span>
+        </div>
+        <button id="delete-btn"
+          class="hidden px-3 py-1.5 text-xs font-medium bg-red-600/80 hover:bg-red-600 rounded-md transition-colors">
+          Delete Session
+        </button>
+      </header>
+
+      <!-- Events Area -->
+      <div id="events-area" class="flex-1 overflow-y-auto p-6 space-y-3">
+        <div id="empty-state" class="flex items-center justify-center h-full">
+          <p class="text-gray-600 text-lg">Select a session and send a prompt to get started.</p>
+        </div>
+      </div>
+
+      <!-- Prompt Input -->
+      <div class="p-4 border-t border-gray-800 bg-gray-900">
+        <div class="flex gap-3 items-end max-w-4xl mx-auto">
+          <textarea id="prompt-input" rows="1" placeholder="Enter your prompt..."
+            disabled
+            class="flex-1 px-4 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-100 placeholder-gray-500 resize-none disabled:opacity-50"></textarea>
+          <button id="send-btn" disabled
+            class="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+            Send
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      sessions: {},
+      activeSessionId: null,
+      streaming: false,
+    };
+
+    // DOM elements
+    const cwdInput = document.getElementById('cwd-input');
+    const createBtn = document.getElementById('create-btn');
+    const sessionList = document.getElementById('session-list');
+    const noSessions = document.getElementById('no-sessions');
+    const headerSession = document.getElementById('header-session');
+    const deleteBtn = document.getElementById('delete-btn');
+    const eventsArea = document.getElementById('events-area');
+    const emptyState = document.getElementById('empty-state');
+    const promptInput = document.getElementById('prompt-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    // --- API helpers ---
+    async function apiPost(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    }
+
+    async function apiDelete(path) {
+      const res = await fetch(path, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    }
+
+    // --- Session management ---
+    async function createSession() {
+      const cwd = cwdInput.value.trim() || '/tmp';
+      try {
+        const data = await apiPost('/api/sessions', { cwd });
+        state.sessions[data.session_id] = { id: data.session_id, cwd: data.cwd, events: [] };
+        cwdInput.value = '';
+        renderSessionList();
+        selectSession(data.session_id);
+      } catch (e) {
+        alert('Failed to create session: ' + e.message);
+      }
+    }
+
+    async function deleteSession(sessionId) {
+      try {
+        await apiDelete(`/api/sessions/${sessionId}`);
+        delete state.sessions[sessionId];
+        if (state.activeSessionId === sessionId) {
+          state.activeSessionId = null;
+          updateMainArea();
+        }
+        renderSessionList();
+      } catch (e) {
+        alert('Failed to delete session: ' + e.message);
+      }
+    }
+
+    function selectSession(sessionId) {
+      state.activeSessionId = sessionId;
+      renderSessionList();
+      updateMainArea();
+    }
+
+    // --- Prompt / SSE ---
+    async function sendPrompt() {
+      const text = promptInput.value.trim();
+      if (!text || !state.activeSessionId || state.streaming) return;
+
+      const session = state.sessions[state.activeSessionId];
+      session.events.push({ type: 'user', content: text });
+      promptInput.value = '';
+      renderEvents();
+
+      state.streaming = true;
+      updateControls();
+
+      try {
+        const res = await fetch(`/api/sessions/${state.activeSessionId}/prompt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+            if (payload === '[DONE]') continue;
+            try {
+              const event = JSON.parse(payload);
+              session.events.push(event);
+              renderEvents();
+            } catch (e) { /* skip malformed */ }
+          }
+        }
+      } catch (e) {
+        session.events.push({ type: 'error', content: 'Stream error: ' + e.message });
+        renderEvents();
+      } finally {
+        state.streaming = false;
+        updateControls();
+      }
+    }
+
+    // --- Rendering ---
+    function renderSessionList() {
+      const ids = Object.keys(state.sessions);
+      noSessions.classList.toggle('hidden', ids.length > 0);
+      sessionList.innerHTML = ids.map(id => {
+        const s = state.sessions[id];
+        const active = id === state.activeSessionId;
+        return `<li class="session-item ${active ? 'active' : ''} rounded-md px-3 py-2 cursor-pointer hover:bg-gray-800 transition-colors text-sm truncate"
+                    data-id="${id}" title="${s.cwd}">
+                  <span class="text-gray-400 text-xs">${id.slice(0, 8)}</span>
+                  <span class="ml-1 text-gray-300">${s.cwd}</span>
+                </li>`;
+      }).join('');
+
+      sessionList.querySelectorAll('.session-item').forEach(el => {
+        el.addEventListener('click', () => selectSession(el.dataset.id));
+      });
+    }
+
+    function updateMainArea() {
+      const active = state.activeSessionId;
+      const session = active ? state.sessions[active] : null;
+
+      if (session) {
+        headerSession.textContent = `Session ${active.slice(0, 8)}  —  ${session.cwd}`;
+        deleteBtn.classList.remove('hidden');
+        promptInput.disabled = false;
+        sendBtn.disabled = false;
+      } else {
+        headerSession.textContent = 'Select or create a session to begin';
+        deleteBtn.classList.add('hidden');
+        promptInput.disabled = true;
+        sendBtn.disabled = true;
+      }
+
+      renderEvents();
+      updateControls();
+    }
+
+    function updateControls() {
+      if (state.streaming) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Streaming...';
+      } else {
+        sendBtn.disabled = !state.activeSessionId;
+        sendBtn.textContent = 'Send';
+      }
+    }
+
+    function renderEvents() {
+      const session = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+      if (!session || session.events.length === 0) {
+        emptyState.classList.remove('hidden');
+        eventsArea.querySelectorAll('.event-card').forEach(el => el.remove());
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      // Re-render all events (simple approach for correctness)
+      const cards = session.events.map(ev => {
+        if (ev.type === 'user') {
+          return `<div class="event-card flex justify-end"><div class="max-w-2xl px-4 py-2 rounded-lg bg-blue-600 text-white text-sm whitespace-pre-wrap">${escapeHtml(ev.content)}</div></div>`;
+        }
+        if (ev.type === 'error') {
+          return `<div class="event-card max-w-2xl px-4 py-2 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm">${escapeHtml(ev.content)}</div>`;
+        }
+        // Agent events
+        const badge = ev.author
+          ? `<span class="text-xs font-mono text-gray-500">${escapeHtml(ev.author)}</span>`
+          : '';
+        const typeBadge = ev.type
+          ? `<span class="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 ml-2">${escapeHtml(ev.type)}</span>`
+          : '';
+        return `<div class="event-card max-w-3xl">
+                  <div class="mb-1">${badge}${typeBadge}</div>
+                  <div class="px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-200 whitespace-pre-wrap">${escapeHtml(ev.content)}</div>
+                </div>`;
+      }).join('');
+
+      // Keep empty state element, replace rest
+      eventsArea.querySelectorAll('.event-card').forEach(el => el.remove());
+      eventsArea.insertAdjacentHTML('beforeend', cards);
+      eventsArea.scrollTop = eventsArea.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // --- Event listeners ---
+    createBtn.addEventListener('click', createSession);
+    cwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') createSession(); });
+    deleteBtn.addEventListener('click', () => { if (state.activeSessionId) deleteSession(state.activeSessionId); });
+    sendBtn.addEventListener('click', sendPrompt);
+    promptInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
+    });
+  </script>
+</body>
+</html>
