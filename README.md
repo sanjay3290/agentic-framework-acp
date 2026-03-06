@@ -20,7 +20,7 @@ The first open-source Python framework for building agents that speak the
 ## How It Works
 
 <p align="center">
-  <img src="docs/images/architecture.png" alt="Architecture diagram" width="700">
+  <img src="https://raw.githubusercontent.com/sanjay3290/agentic-framework-acp/main/docs/images/architecture.png" alt="Architecture diagram" width="700">
 </p>
 
 ## Why ACP?
@@ -80,7 +80,7 @@ serve(agent)  # Serves over ACP stdio
 Chain agents — each one's output feeds into the next:
 
 <p align="center">
-  <img src="docs/images/sequential.png" alt="Sequential pipeline" width="550">
+  <img src="https://raw.githubusercontent.com/sanjay3290/agentic-framework-acp/main/docs/images/sequential.png" alt="Sequential pipeline" width="550">
 </p>
 
 ```python
@@ -108,7 +108,7 @@ serve(pipeline)
 Route requests to specialists based on keywords:
 
 <p align="center">
-  <img src="docs/images/router.png" alt="Router agent pattern" width="550">
+  <img src="https://raw.githubusercontent.com/sanjay3290/agentic-framework-acp/main/docs/images/router.png" alt="Router agent pattern" width="550">
 </p>
 
 ```python
@@ -221,7 +221,7 @@ async for event in agent.run(ctx):
 Wrap any agent as a tool for another agent:
 
 <p align="center">
-  <img src="docs/images/delegation.png" alt="Agent-to-agent delegation" width="500">
+  <img src="https://raw.githubusercontent.com/sanjay3290/agentic-framework-acp/main/docs/images/delegation.png" alt="Agent-to-agent delegation" width="500">
 </p>
 
 ```python
@@ -288,7 +288,7 @@ registry.register("my-backend", BackendConfig(
 ## Architecture
 
 <p align="center">
-  <img src="docs/images/internals.png" alt="Framework internals" width="700">
+  <img src="https://raw.githubusercontent.com/sanjay3290/agentic-framework-acp/main/docs/images/internals.png" alt="Framework internals" width="700">
 </p>
 
 ## Testing
