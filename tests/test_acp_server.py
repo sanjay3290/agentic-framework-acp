@@ -49,3 +49,30 @@ async def test_framework_agent_prompt():
         session_id=session.session_id,
     )
     assert result.stop_reason == "end_turn"
+
+
+class FakeAgentConnection:
+    def __init__(self):
+        self.calls = []
+
+    async def session_update(self, session_id, update, **kwargs):
+        self.calls.append((session_id, update))
+
+
+@pytest.mark.asyncio
+async def test_framework_agent_prompt_delivers_session_updates():
+    agent = MockAgent("test", "hello response")
+    fw_agent = FrameworkAgent(agent)
+    fake_conn = FakeAgentConnection()
+    fw_agent.on_connect(fake_conn)
+    session = await fw_agent.new_session(cwd="/tmp/test")
+    result = await fw_agent.prompt(
+        prompt=[acp.schema.TextContentBlock(type="text", text="Hi")],
+        session_id=session.session_id,
+    )
+    assert len(fake_conn.calls) == 1
+    recorded_session_id, update = fake_conn.calls[0]
+    assert recorded_session_id == session.session_id
+    assert isinstance(update, acp.schema.AgentMessageChunk)
+    assert update.content.text == "hello response"
+    assert result.stop_reason == "end_turn"

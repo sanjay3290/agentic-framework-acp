@@ -74,7 +74,5 @@ class FrameworkAgent:
         async for event in self._agent.run(ctx):
             if self._connection and event.type == "message":
                 update = helpers.update_agent_message_text(str(event.content))
-                await self._connection.send_notification(
-                    helpers.session_notification(session_id=session_id, update=update)
-                )
+                await self._connection.session_update(session_id=session_id, update=update)
         return acp.PromptResponse(stop_reason="end_turn")
