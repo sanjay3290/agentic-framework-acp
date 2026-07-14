@@ -1,3 +1,5 @@
+import pytest
+
 from acp_agent_framework.context import Context
 from acp_agent_framework.state import State
 
@@ -43,3 +45,37 @@ def test_context_clear_history():
     ctx.add_message("user", "Hello")
     ctx.clear_history()
     assert ctx.get_history() == []
+
+
+@pytest.mark.asyncio
+async def test_context_close_closes_all_and_reraises_first_error():
+    """F6: close() always clears resources; healthy resources close even if one fails."""
+
+    class FailingResource:
+        def __init__(self):
+            self.closed = False
+
+        async def aclose(self):
+            self.closed = True
+            raise RuntimeError("aclose A failed")
+
+    class HealthyResource:
+        def __init__(self):
+            self.closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    ctx = Context(session_id="s1", cwd="/tmp")
+    a = FailingResource()
+    b = HealthyResource()
+    ctx.set_resource("a", a)
+    ctx.set_resource("b", b)
+
+    with pytest.raises(RuntimeError, match="aclose A failed"):
+        await ctx.close()
+
+    assert a.closed is True
+    assert b.closed is True
+    assert ctx._resources == {}
+    assert ctx._resource_locks == {}

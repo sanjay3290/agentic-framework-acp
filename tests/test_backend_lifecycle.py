@@ -1,14 +1,24 @@
 """Tests for per-session backend lifecycle (spawn once, reuse, close)."""
+import asyncio
+
 import pytest
 
-from acp_agent_framework.agents.agent import Agent
+from acp_agent_framework.agents.agent import Agent, _BackendSession
 from acp_agent_framework.context import Context
 
 
 class FakeBackend:
     """Minimal stand-in for AcpBackend with call counters."""
 
-    def __init__(self, responses: list[str] | None = None, prompt_error: Exception | None = None):
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        prompt_error: Exception | None = None,
+        new_session_error: Exception | None = None,
+        start_delay: float = 0.0,
+        prompt_delay: float = 0.0,
+        stop_error: Exception | None = None,
+    ):
         self.start_calls = 0
         self.new_session_calls = 0
         self.stop_calls = 0
@@ -17,6 +27,10 @@ class FakeBackend:
         self._responses = list(responses) if responses is not None else ["ok"]
         self._response_idx = 0
         self._prompt_error = prompt_error
+        self._new_session_error = new_session_error
+        self._start_delay = start_delay
+        self._prompt_delay = prompt_delay
+        self._stop_error = stop_error
 
     @property
     def is_running(self) -> bool:
@@ -28,13 +42,19 @@ class FakeBackend:
 
     async def start(self) -> None:
         self.start_calls += 1
+        if self._start_delay:
+            await asyncio.sleep(self._start_delay)
         self._running = True
 
     async def new_session(self, cwd: str, mcp_servers=None) -> str:
         self.new_session_calls += 1
+        if self._new_session_error is not None:
+            raise self._new_session_error
         return "fake-session"
 
     async def prompt(self, session_id: str, text: str) -> str:
+        if self._prompt_delay:
+            await asyncio.sleep(self._prompt_delay)
         if self._prompt_error is not None:
             raise self._prompt_error
         self.prompts.append(text)
@@ -51,6 +71,8 @@ class FakeBackend:
     async def stop(self) -> None:
         self.stop_calls += 1
         self._running = False
+        if self._stop_error is not None:
+            raise self._stop_error
 
 
 def _install_backend_factory(monkeypatch, backends: list[FakeBackend] | None = None):
@@ -222,3 +244,83 @@ async def test_prompt_exception_removes_resource_and_stops(monkeypatch):
     await _run(agent, ctx, "ok now")
     assert healthy.start_calls == 1
     assert ctx.get_output() == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_spawn_failure_stops_backend_and_leaves_no_resource(monkeypatch):
+    """F1: new_session failure cleans up the started backend and does not set the resource."""
+    created: list[FakeBackend] = []
+
+    def _get_backend(self):
+        backend = FakeBackend(new_session_error=RuntimeError("session create failed"))
+        created.append(backend)
+        return backend
+
+    monkeypatch.setattr(Agent, "_get_backend", _get_backend)
+    agent = Agent(name="assistant", backend="claude", instruction="Hi.")
+    ctx = Context(session_id="s1", cwd="/tmp")
+
+    with pytest.raises(RuntimeError, match="session create failed"):
+        await _run(agent, ctx, "boom")
+
+    assert len(created) == 1
+    assert created[0].stop_calls == 1
+    assert ctx.get_resource("backend:assistant") is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_runs_spawn_only_one_backend(monkeypatch):
+    """F2: overlapping run() calls on the same agent/ctx spawn exactly one backend."""
+    created: list[FakeBackend] = []
+
+    def _get_backend(self):
+        backend = FakeBackend(start_delay=0.01, prompt_delay=0.01)
+        created.append(backend)
+        return backend
+
+    monkeypatch.setattr(Agent, "_get_backend", _get_backend)
+    agent = Agent(name="assistant", backend="claude", instruction="Hi.")
+    ctx = Context(session_id="s1", cwd="/tmp")
+
+    async def _consume(text: str):
+        ctx.set_input(text)
+        async for _ in agent.run(ctx):
+            pass
+
+    # Launch concurrently: resource_lock serializes spawn so only one backend
+    # is created even though both enter run() while the other is in-flight.
+    await asyncio.gather(_consume("first"), _consume("second"))
+
+    assert len(created) == 1
+    backend = created[0]
+    assert backend.start_calls == 1
+    assert len(backend.prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_backend_session_aclose_stops_bridge_even_if_stop_raises():
+    """F7: mcp_bridge.stop() runs even when backend.stop() raises."""
+
+    class RaisingStopBackend:
+        stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            raise RuntimeError("stop failed")
+
+    class FakeBridge:
+        def __init__(self):
+            self.stop_calls = 0
+
+        def stop(self):
+            self.stop_calls += 1
+
+    backend = RaisingStopBackend()
+    bridge = FakeBridge()
+    sess = _BackendSession(backend, "sid", bridge)
+
+    with pytest.raises(RuntimeError, match="stop failed"):
+        await sess.aclose()
+
+    assert backend.stop_calls == 1
+    assert bridge.stop_calls == 1

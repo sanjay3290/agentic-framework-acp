@@ -18,9 +18,11 @@ class _BackendSession:
         self.instruction_sent = False
 
     async def aclose(self):
-        await self.backend.stop()
-        if self.mcp_bridge:
-            self.mcp_bridge.stop()
+        try:
+            await self.backend.stop()
+        finally:
+            if self.mcp_bridge:
+                self.mcp_bridge.stop()
 
 
 class Agent(BaseAgent):
@@ -66,66 +68,78 @@ class Agent(BaseAgent):
             await self.before_run(ctx)
 
         key = f"backend:{self.name}"
-        sess = ctx.get_resource(key)
+        async with ctx.resource_lock(key):
+            sess = ctx.get_resource(key)
 
-        if sess is not None and not sess.backend.is_running:
-            await sess.aclose()
-            ctx.pop_resource(key)
-            sess = None
+            if sess is not None and not sess.backend.is_running:
+                await sess.aclose()
+                ctx.pop_resource(key)
+                sess = None
 
-        if sess is None:
-            mcp_bridge = None
-            mcp_servers: list = []
+            if sess is None:
+                mcp_bridge = None
+                mcp_servers: list = []
+                backend = None
+                try:
+                    if self.tools:
+                        from acp_agent_framework.tools.mcp_bridge import McpBridge
+                        mcp_bridge = McpBridge(self.tools)
+                        mcp_bridge.start()
+                        mcp_servers = [mcp_bridge.get_mcp_config()]
 
-            if self.tools:
-                from acp_agent_framework.tools.mcp_bridge import McpBridge
-                mcp_bridge = McpBridge(self.tools)
-                mcp_bridge.start()
-                mcp_servers = [mcp_bridge.get_mcp_config()]
+                    backend = self._get_backend()
+                    await backend.start()
+                    session_id = await backend.new_session(ctx.cwd, mcp_servers=mcp_servers)
+                    sess = _BackendSession(backend, session_id, mcp_bridge)
+                    ctx.set_resource(key, sess)
+                except Exception:
+                    # Clean up anything that was started (F1).
+                    # Bridge cleanup must run even if backend.stop() raises.
+                    try:
+                        if backend is not None:
+                            await backend.stop()
+                    finally:
+                        if mcp_bridge is not None:
+                            mcp_bridge.stop()
+                    raise
 
-            backend = self._get_backend()
-            await backend.start()
-            session_id = await backend.new_session(ctx.cwd, mcp_servers=mcp_servers)
-            sess = _BackendSession(backend, session_id, mcp_bridge)
-            ctx.set_resource(key, sess)
+            user_input = ctx.get_input() or ""
 
-        user_input = ctx.get_input() or ""
+            # Build prompt: instruction + history only on first use of this backend
+            parts = []
+            if not sess.instruction_sent:
+                instruction = self.resolve_instruction(ctx)
+                if instruction:
+                    parts.append(instruction)
+                if self.multi_turn and ctx.get_history():
+                    history_lines = []
+                    for msg in ctx.get_history():
+                        role = msg["role"].capitalize()
+                        history_lines.append(f"{role}: {msg['content']}")
+                    parts.append("\n".join(history_lines))
+            if user_input:
+                parts.append(user_input)
+            full_prompt = "\n\n".join(parts)
 
-        # Build prompt: instruction + history only on first use of this backend
-        parts = []
-        if not sess.instruction_sent:
-            instruction = self.resolve_instruction(ctx)
-            if instruction:
-                parts.append(instruction)
-            if self.multi_turn and ctx.get_history():
-                history_lines = []
-                for msg in ctx.get_history():
-                    role = msg["role"].capitalize()
-                    history_lines.append(f"{role}: {msg['content']}")
-                parts.append("\n".join(history_lines))
-        if user_input:
-            parts.append(user_input)
-        full_prompt = "\n\n".join(parts)
+            # Apply input guardrails
+            for guardrail in self.input_guardrails:
+                full_prompt = guardrail.validate(full_prompt)
 
-        # Apply input guardrails
-        for guardrail in self.input_guardrails:
-            full_prompt = guardrail.validate(full_prompt)
+            try:
+                if self.stream:
+                    collected = []
+                    async for chunk in sess.backend.prompt_stream(sess.session_id, full_prompt):
+                        collected.append(chunk)
+                        yield Event(author=self.name, type="stream_chunk", content=chunk)
+                    response = "".join(collected)
+                else:
+                    response = await sess.backend.prompt(sess.session_id, full_prompt)
+            except Exception:
+                await sess.aclose()
+                ctx.pop_resource(key)
+                raise
 
-        try:
-            if self.stream:
-                collected = []
-                async for chunk in sess.backend.prompt_stream(sess.session_id, full_prompt):
-                    collected.append(chunk)
-                    yield Event(author=self.name, type="stream_chunk", content=chunk)
-                response = "".join(collected)
-            else:
-                response = await sess.backend.prompt(sess.session_id, full_prompt)
-        except Exception:
-            await sess.aclose()
-            ctx.pop_resource(key)
-            raise
-
-        sess.instruction_sent = True
+            sess.instruction_sent = True
 
         # Apply output guardrails
         for guardrail in self.output_guardrails:

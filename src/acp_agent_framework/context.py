@@ -1,4 +1,5 @@
 """Execution context passed through agent pipelines."""
+import asyncio
 from typing import Any, Optional
 from acp_agent_framework.state import State
 
@@ -12,6 +13,7 @@ class Context:
         self._agent_outputs: dict[str, Any] = {}
         self._history: list[dict[str, str]] = []
         self._resources: dict[str, Any] = {}
+        self._resource_locks: dict[str, asyncio.Lock] = {}
 
     def add_message(self, role: str, content: str) -> None:
         """Add a message to conversation history."""
@@ -34,13 +36,29 @@ class Context:
     def pop_resource(self, key: str) -> Any:
         return self._resources.pop(key, None)
 
+    def resource_lock(self, key: str) -> asyncio.Lock:
+        """Return a per-key lock for resource creation/use (created lazily)."""
+        lock = self._resource_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._resource_locks[key] = lock
+        return lock
+
     async def close(self) -> None:
         """Release all session resources (backend processes, bridges)."""
+        first_error: Exception | None = None
         for key, res in list(self._resources.items()):
             closer = getattr(res, "aclose", None)
             if closer is not None:
-                await closer()
+                try:
+                    await closer()
+                except Exception as e:
+                    if first_error is None:
+                        first_error = e
         self._resources.clear()
+        self._resource_locks.clear()
+        if first_error is not None:
+            raise first_error
 
     def get_input(self) -> Any:
         return self._input

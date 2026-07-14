@@ -31,7 +31,14 @@ def _serve_acp(agent: BaseAgent):
     from acp_agent_framework.server.acp_server import FrameworkAgent
 
     fw_agent = FrameworkAgent(agent)
-    asyncio.run(acp.run_agent(fw_agent))
+
+    async def _main():
+        try:
+            await acp.run_agent(fw_agent)
+        finally:
+            await fw_agent.shutdown()
+
+    asyncio.run(_main())
 
 
 def _serve_http(agent: BaseAgent, host: str, port: int):

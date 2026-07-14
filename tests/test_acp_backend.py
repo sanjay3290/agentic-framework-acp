@@ -118,3 +118,92 @@ async def test_prompt_stream_propagates_backend_errors():
         async for _ in backend.prompt_stream("sess-1", "hi"):
             pass
     assert backend._client.stream_queue is None
+
+
+class _SlowStreamingConnection:
+    """Connection that sleeps between updates so the consumer can aclose mid-stream."""
+
+    def __init__(self, client):
+        self._client = client
+
+    async def prompt(self, session_id: str, prompt, **kwargs):
+        await self._client.session_update(
+            session_id, helpers.update_agent_message_text("chunk1")
+        )
+        await asyncio.sleep(0.05)
+        await self._client.session_update(
+            session_id, helpers.update_agent_message_text("chunk2")
+        )
+        await asyncio.sleep(0.05)
+        await self._client.session_update(
+            session_id, helpers.update_agent_message_text("chunk3")
+        )
+
+
+class _SleepyPromptConnection:
+    """Connection that records prompts and sleeps so concurrent calls can race."""
+
+    def __init__(self, client):
+        self._client = client
+        self.prompts: list[str] = []
+
+    async def prompt(self, session_id: str, prompt, **kwargs):
+        text = prompt[0].text if prompt else ""
+        self.prompts.append(text)
+        await asyncio.sleep(0.02)
+        await self._client.session_update(
+            session_id, helpers.update_agent_message_text(f"resp:{text}")
+        )
+
+
+@pytest.mark.asyncio
+async def test_prompt_stream_aclose_cancels_pending_queue_get():
+    """F5: closing the stream generator cancels both prompt and pending queue.get tasks."""
+    backend = AcpBackend(BackendConfig(command="echo", timeout=5.0))
+    fake = _SlowStreamingConnection(backend._client)
+    backend._connection = fake
+
+    gen = backend.prompt_stream("sess-1", "hi")
+    first = await gen.__anext__()
+    assert first == "chunk1"
+    await gen.aclose()
+
+    # Allow cancelled tasks to settle
+    await asyncio.sleep(0)
+    pending = [t for t in asyncio.all_tasks() if not t.done()]
+    assert len(pending) == 1  # just the test task
+    assert backend._client.stream_queue is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_prompt_serializes_without_interleaving():
+    """F3: concurrent prompt() calls on one backend do not interleave/truncate."""
+    backend = AcpBackend(BackendConfig(command="echo", timeout=5.0, max_retries=1))
+    fake = _SleepyPromptConnection(backend._client)
+    backend._connection = fake
+
+    r1, r2 = await asyncio.gather(
+        backend.prompt("sess-1", "alpha"),
+        backend.prompt("sess-1", "beta"),
+    )
+
+    assert {r1, r2} == {"resp:alpha", "resp:beta"}
+    assert set(fake.prompts) == {"alpha", "beta"}
+
+
+@pytest.mark.asyncio
+async def test_start_respects_config_env_path(tmp_path):
+    """F8: which() must search config.env PATH, not only the process PATH."""
+    stub_name = "fake-acp-backend-stub"
+    stub = tmp_path / stub_name
+    stub.write_text("#!/bin/sh\nexit 1\n")
+    stub.chmod(0o755)
+
+    config = BackendConfig(command=stub_name, env={"PATH": str(tmp_path)})
+    backend = AcpBackend(config)
+
+    with pytest.raises(Exception) as exc_info:
+        await backend.start()
+
+    # Preflight which() passed; failure is at connect/initialize, not "command not found"
+    assert "Backend command not found" not in str(exc_info.value)

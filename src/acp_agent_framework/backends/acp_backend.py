@@ -89,13 +89,15 @@ class AcpBackend:
         self._process: Optional[asyncio.subprocess.Process] = None
         self._connection: Optional[acp.connection.ClientSideConnection] = None
         self._client = _MinimalClient(sandbox_root)
+        self._prompt_lock = asyncio.Lock()
 
     @property
     def is_running(self) -> bool:
         return self._process is not None and self._process.returncode is None
 
     async def start(self) -> None:
-        if shutil.which(self.config.command) is None:
+        search_path = (self.config.env or {}).get("PATH") or os.environ.get("PATH")
+        if shutil.which(self.config.command, path=search_path) is None:
             raise RuntimeError(
                 f"Backend command not found: {self.config.command!r}. "
                 "Is the backend CLI installed and on your PATH?"
@@ -140,15 +142,16 @@ class AcpBackend:
         """Execute a single prompt request without retries."""
         if not self._connection:
             raise RuntimeError("Backend not started.")
-        self._client.updates.clear()
-        await asyncio.wait_for(
-            self._connection.prompt(
-                session_id=session_id,
-                prompt=[acp.schema.TextContentBlock(type="text", text=text)],
-            ),
-            timeout=self.config.timeout,
-        )
-        return self._collect_response_text()
+        async with self._prompt_lock:
+            self._client.updates.clear()
+            await asyncio.wait_for(
+                self._connection.prompt(
+                    session_id=session_id,
+                    prompt=[acp.schema.TextContentBlock(type="text", text=text)],
+                ),
+                timeout=self.config.timeout,
+            )
+            return self._collect_response_text()
 
     def _collect_response_text(self) -> str:
         """Extract text from accumulated session updates."""
@@ -178,40 +181,46 @@ class AcpBackend:
         """Prompt and yield text chunks live as session updates arrive."""
         if not self._connection:
             raise RuntimeError("Backend not started.")
-        queue: asyncio.Queue = asyncio.Queue()
-        self._client.stream_queue = queue
-        self._client.updates.clear()
-        prompt_task = asyncio.create_task(
-            asyncio.wait_for(
-                self._connection.prompt(
-                    session_id=session_id,
-                    prompt=[acp.schema.TextContentBlock(type="text", text=text)],
-                ),
-                timeout=self.config.timeout,
-            )
-        )
-        try:
-            while True:
-                get_task = asyncio.create_task(queue.get())
-                done, _ = await asyncio.wait(
-                    {get_task, prompt_task}, return_when=asyncio.FIRST_COMPLETED
+        async with self._prompt_lock:
+            queue: asyncio.Queue = asyncio.Queue()
+            self._client.stream_queue = queue
+            self._client.updates.clear()
+            prompt_task = asyncio.create_task(
+                asyncio.wait_for(
+                    self._connection.prompt(
+                        session_id=session_id,
+                        prompt=[acp.schema.TextContentBlock(type="text", text=text)],
+                    ),
+                    timeout=self.config.timeout,
                 )
-                if get_task in done:
-                    text_chunk = _message_text(get_task.result())
-                    if text_chunk is not None:
-                        yield text_chunk
-                else:
-                    get_task.cancel()
-                if prompt_task in done:
-                    prompt_task.result()  # re-raise backend errors / timeouts
-                    while not queue.empty():
-                        text_chunk = _message_text(queue.get_nowait())
+            )
+            get_task: asyncio.Task | None = None
+            try:
+                while True:
+                    get_task = asyncio.create_task(queue.get())
+                    done, _ = await asyncio.wait(
+                        {get_task, prompt_task}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if get_task in done:
+                        text_chunk = _message_text(get_task.result())
+                        get_task = None
                         if text_chunk is not None:
                             yield text_chunk
-                    break
-        finally:
-            prompt_task.cancel()
-            self._client.stream_queue = None
+                    else:
+                        get_task.cancel()
+                        get_task = None
+                    if prompt_task in done:
+                        prompt_task.result()  # re-raise backend errors / timeouts
+                        while not queue.empty():
+                            text_chunk = _message_text(queue.get_nowait())
+                            if text_chunk is not None:
+                                yield text_chunk
+                        break
+            finally:
+                prompt_task.cancel()
+                if get_task is not None:
+                    get_task.cancel()
+                self._client.stream_queue = None
 
     async def stop(self) -> None:
         if self._connection:

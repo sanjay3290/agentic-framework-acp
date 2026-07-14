@@ -62,6 +62,21 @@ class FrameworkAgent:
     async def set_config_option(self, config_id, session_id, value, **kwargs):
         return acp.SetSessionConfigOptionResponse()
 
+    async def close_session(self, session_id: str, **kwargs):
+        ctx = self._sessions.pop(session_id, None)
+        if ctx is not None:
+            await ctx.close()
+        return None
+
+    async def shutdown(self) -> None:
+        """Close every session context (called when the server loop exits)."""
+        for sid in list(self._sessions):
+            ctx = self._sessions.pop(sid)
+            try:
+                await ctx.close()
+            except Exception:
+                pass
+
     async def prompt(self, prompt, session_id, **kwargs):
         ctx = self._sessions.get(session_id)
         if not ctx:
@@ -72,22 +87,26 @@ class FrameworkAgent:
                 text_parts.append(block.text)
         user_input = "\n".join(text_parts)
         ctx.set_input(user_input)
-        streamed = False
+        streamed_text = ""
         async for event in self._agent.run(ctx):
             if not self._connection:
                 continue
             if event.type == "stream_chunk":
                 update = helpers.update_agent_message_text(str(event.content))
                 await self._connection.session_update(session_id=session_id, update=update)
-                streamed = True
+                streamed_text += str(event.content)
             elif event.type == "message":
                 # Each agent run emits its stream chunks then one final message.
-                # If chunks were forwarded, the message is their concatenation —
-                # skip it, but only once, so a later agent in a pipeline still
-                # gets its message through.
-                if streamed:
-                    streamed = False
-                    continue
+                # If chunks were forwarded and the final equals their concat,
+                # skip the duplicate. If output guardrails (or anything else)
+                # changed the final content, forward it. Reset so a later
+                # agent in a pipeline still gets its message through.
+                if streamed_text:
+                    final = str(event.content)
+                    if final == streamed_text:
+                        streamed_text = ""
+                        continue
+                    streamed_text = ""
                 update = helpers.update_agent_message_text(str(event.content))
                 await self._connection.session_update(session_id=session_id, update=update)
         return acp.PromptResponse(stop_reason="end_turn")
