@@ -126,40 +126,40 @@ async def test_agent_multi_turn_records_history():
     agent = Agent(name="test", backend="claude", instruction="Be helpful.", multi_turn=True)
     ctx = Context(session_id="s1", cwd="/tmp")
 
-    # First turn
-    ctx.set_input("Hello")
     with patch.object(agent, "_get_backend") as mock_get:
         mock_backend = AsyncMock()
+        mock_backend.is_running = True
         mock_backend.start = AsyncMock()
         mock_backend.new_session = AsyncMock(return_value="sess-1")
-        mock_backend.prompt = AsyncMock(return_value="Hi there!")
+        mock_backend.prompt = AsyncMock(side_effect=["Hi there!", "I'm good!"])
         mock_backend.stop = AsyncMock()
         mock_get.return_value = mock_backend
+
+        # First turn
+        ctx.set_input("Hello")
         async for _ in agent.run(ctx):
             pass
 
-    assert len(ctx.get_history()) == 2
-    assert ctx.get_history()[0] == {"role": "user", "content": "Hello"}
-    assert ctx.get_history()[1] == {"role": "assistant", "content": "Hi there!"}
+        assert len(ctx.get_history()) == 2
+        assert ctx.get_history()[0] == {"role": "user", "content": "Hello"}
+        assert ctx.get_history()[1] == {"role": "assistant", "content": "Hi there!"}
 
-    # Second turn - history should be included in prompt
-    ctx.set_input("How are you?")
-    with patch.object(agent, "_get_backend") as mock_get:
-        mock_backend = AsyncMock()
-        mock_backend.start = AsyncMock()
-        mock_backend.new_session = AsyncMock(return_value="sess-2")
-        mock_backend.prompt = AsyncMock(return_value="I'm good!")
-        mock_backend.stop = AsyncMock()
-        mock_get.return_value = mock_backend
+        # Second turn reuses the same backend; history stays in ctx but is not replayed
+        ctx.set_input("How are you?")
         async for _ in agent.run(ctx):
             pass
 
-        # Verify the prompt included history
-        prompt_call = mock_backend.prompt.call_args
-        sent_text = prompt_call[0][1]
-        assert "User: Hello" in sent_text
-        assert "Assistant: Hi there!" in sent_text
-        assert "How are you?" in sent_text
+        assert mock_backend.start.await_count == 1
+        assert mock_backend.new_session.await_count == 1
+        assert mock_backend.prompt.await_count == 2
+
+        first_prompt = mock_backend.prompt.call_args_list[0][0][1]
+        second_prompt = mock_backend.prompt.call_args_list[1][0][1]
+        assert "Be helpful." in first_prompt
+        assert "Hello" in first_prompt
+        assert "Be helpful." not in second_prompt
+        assert "User: Hello" not in second_prompt
+        assert "How are you?" in second_prompt
 
     assert len(ctx.get_history()) == 4
 

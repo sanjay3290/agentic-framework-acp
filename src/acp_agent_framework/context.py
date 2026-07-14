@@ -11,6 +11,7 @@ class Context:
         self._output: Any = None
         self._agent_outputs: dict[str, Any] = {}
         self._history: list[dict[str, str]] = []
+        self._resources: dict[str, Any] = {}
 
     def add_message(self, role: str, content: str) -> None:
         """Add a message to conversation history."""
@@ -23,6 +24,23 @@ class Context:
     def clear_history(self) -> None:
         """Clear conversation history."""
         self._history.clear()
+
+    def get_resource(self, key: str) -> Any:
+        return self._resources.get(key)
+
+    def set_resource(self, key: str, value: Any) -> None:
+        self._resources[key] = value
+
+    def pop_resource(self, key: str) -> Any:
+        return self._resources.pop(key, None)
+
+    async def close(self) -> None:
+        """Release all session resources (backend processes, bridges)."""
+        for key, res in list(self._resources.items()):
+            closer = getattr(res, "aclose", None)
+            if closer is not None:
+                await closer()
+        self._resources.clear()
 
     def get_input(self) -> Any:
         return self._input

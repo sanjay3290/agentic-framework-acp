@@ -55,7 +55,8 @@ def create_app(agent: BaseAgent) -> FastAPI:
     async def delete_session(session_id: str) -> dict:
         if session_id not in sessions:
             raise HTTPException(status_code=404, detail="Session not found")
-        del sessions[session_id]
+        ctx = sessions.pop(session_id)
+        await ctx.close()
         return {"status": "deleted"}
 
     @app.post("/api/sessions/{session_id}/prompt")

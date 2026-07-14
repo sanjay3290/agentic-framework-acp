@@ -270,6 +270,7 @@ async def test_multi_turn_maintains_history():
 
     with patch.object(agent, "_get_backend") as mock_get:
         mock_backend = AsyncMock()
+        mock_backend.is_running = True
         mock_backend.start = AsyncMock()
         mock_backend.new_session = AsyncMock(return_value="s1")
         mock_backend.prompt = AsyncMock(side_effect=["Response 1", "Response 2"])
@@ -281,7 +282,7 @@ async def test_multi_turn_maintains_history():
         async for _ in agent.run(ctx):
             pass
 
-        # Second turn
+        # Second turn reuses the same backend session
         ctx.set_input("Question 2")
         async for _ in agent.run(ctx):
             pass
@@ -293,10 +294,15 @@ async def test_multi_turn_maintains_history():
         assert history[2] == {"role": "user", "content": "Question 2"}
         assert history[3] == {"role": "assistant", "content": "Response 2"}
 
-        # Second prompt should include history
+        # Warm backend holds conversation; second prompt is only the new input
+        assert mock_backend.start.await_count == 1
+        first_prompt = mock_backend.prompt.call_args_list[0][0][1]
         second_prompt = mock_backend.prompt.call_args_list[1][0][1]
-        assert "Question 1" in second_prompt
-        assert "Response 1" in second_prompt
+        assert "Be helpful." in first_prompt
+        assert "Question 1" in first_prompt
+        assert "Question 1" not in second_prompt
+        assert "Response 1" not in second_prompt
+        assert second_prompt == "Question 2"
 
 
 # ── Streaming ────────────────────────────────────────────────────────────
