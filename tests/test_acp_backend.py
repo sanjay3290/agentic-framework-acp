@@ -168,10 +168,14 @@ async def test_prompt_stream_aclose_cancels_pending_queue_get():
     assert first == "chunk1"
     await gen.aclose()
 
-    # Allow cancelled tasks to settle
-    await asyncio.sleep(0)
-    pending = [t for t in asyncio.all_tasks() if not t.done()]
-    assert len(pending) == 1  # just the test task
+    # Allow cancelled tasks to settle; task teardown needs a loop tick or
+    # two, and how many varies across Python versions.
+    for _ in range(20):
+        pending = [t for t in asyncio.all_tasks() if not t.done()]
+        if len(pending) == 1:  # just the test task
+            break
+        await asyncio.sleep(0)
+    assert len(pending) == 1
     assert backend._client.stream_queue is None
 
 
