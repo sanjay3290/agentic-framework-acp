@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "acp-agent-framework"
-version = "0.1.1"
+version = "0.2.0"
 description = "Build custom ACP-compatible agents using your existing AI subscriptions"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,12 +22,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "agent-client-protocol>=0.8.0",
+    "agent-client-protocol>=0.11.0",
     "pydantic>=2.0",
     "click>=8.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
-    "sse-starlette>=1.6.0",
     "pyyaml>=6.0",
 ]
 

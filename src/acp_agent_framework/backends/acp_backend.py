@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 import acp
+from acp_agent_framework import __version__
 from acp_agent_framework.backends.registry import BackendConfig
 
 
@@ -110,7 +111,7 @@ class AcpBackend:
             protocol_version=acp.PROTOCOL_VERSION,
             client_capabilities=acp.schema.ClientCapabilities(fs=fs_cap),
             client_info=acp.schema.Implementation(
-                name="acp-agent-framework", version="0.1.0"
+                name="acp-agent-framework", version=__version__
             ),
         )
 

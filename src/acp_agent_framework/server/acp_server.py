@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Optional
 import acp
 from acp import helpers
+from acp_agent_framework import __version__
 from acp_agent_framework.agents.base import BaseAgent
 from acp_agent_framework.context import Context
 
@@ -26,7 +27,7 @@ class FrameworkAgent:
             agent_capabilities=acp.schema.AgentCapabilities(
                 prompt_capabilities=acp.schema.PromptCapabilities(image=False, embedded_context=False),
             ),
-            agent_info=acp.schema.Implementation(name=self._agent.name, version="0.1.0"),
+            agent_info=acp.schema.Implementation(name=self._agent.name, version=__version__),
             auth_methods=[],
         )
 
