@@ -17,6 +17,15 @@ async def test_acp_backend_spawn_invalid_command():
         await backend.start()
 
 
+@pytest.mark.asyncio
+async def test_acp_backend_start_missing_command_raises():
+    config = BackendConfig(command="definitely-not-a-real-binary-xyz")
+    backend = AcpBackend(config)
+    with pytest.raises(RuntimeError, match="definitely-not-a-real-binary-xyz") as exc_info:
+        await backend.start()
+    assert "definitely-not-a-real-binary-xyz" in str(exc_info.value)
+
+
 def test_backend_config_rejects_invalid_timeout():
     with pytest.raises(ValidationError):
         BackendConfig(command="echo", timeout=0)

@@ -1,9 +1,9 @@
 """Integration tests for ACP backends.
 
 These tests require actual backend agents installed:
-- Claude: claude-agent-acp (npm: @zed-industries/claude-agent-acp)
-- Gemini: gemini (npm: @google/gemini-cli)
-- Codex: npx @zed-industries/codex-acp
+- Claude: claude-agent-acp (npm: @agentclientprotocol/claude-agent-acp)
+- Gemini: gemini --acp (npm: @google/gemini-cli)
+- Codex: codex-acp (npm: @agentclientprotocol/codex-acp)
 
 Run with: pytest tests/integration/ -v -m integration
 """

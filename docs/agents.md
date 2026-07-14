@@ -193,9 +193,7 @@ The `BackendRegistry` singleton comes pre-configured with these backends:
 |------|---------|------|
 | `"claude"` | `claude-agent-acp` | (none) |
 | `"gemini"` | `gemini` | `["--acp"]` |
-| `"codex"` | `npx` | `["@zed-industries/codex-acp"]` |
-| `"openai"` | `openai-acp` | (none) |
-| `"ollama"` | `ollama-acp` | (none) |
+| `"codex"` | `codex-acp` | (none) |
 
 Register a custom backend:
 

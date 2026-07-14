@@ -269,9 +269,9 @@ acp-agent run my_agent.agent:agent -t http -p 8000 # Run as HTTP server
 
 | Backend | Command | Install |
 |---|---|---|
-| **Claude** | `claude-agent-acp` | `npm i -g @zed-industries/claude-agent-acp` |
-| **Gemini** | `gemini --experimental-acp` | `npm i -g @google/gemini-cli` |
-| **Codex** | `codex-acp` | `npm i -g @zed-industries/codex-acp` |
+| **Claude** | `claude-agent-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` |
+| **Gemini** | `gemini --acp` | `npm i -g @google/gemini-cli` |
+| **Codex** | `codex-acp` | `npm i -g @agentclientprotocol/codex-acp` |
 
 Register custom backends:
 

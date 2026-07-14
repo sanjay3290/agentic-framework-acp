@@ -56,15 +56,13 @@ Framework                          Backend Process
 
 ## Built-in Backends
 
-The framework ships with five pre-registered backends. These are defined in `DEFAULT_BACKENDS` within the `BackendRegistry` and are available immediately without any registration code.
+The framework ships with three pre-registered backends. These are defined in `DEFAULT_BACKENDS` within the `BackendRegistry` and are available immediately without any registration code.
 
 | Backend  | Registry Name | Command              | Arguments     | Install Command                                     | Notes                                          |
 |----------|---------------|----------------------|---------------|------------------------------------------------------|-------------------------------------------------|
-| Claude   | `claude`      | `claude-agent-acp`   | (none)        | `npm i -g @zed-industries/claude-agent-acp`          | Uses your Claude subscription via the Zed ACP bridge |
+| Claude   | `claude`      | `claude-agent-acp`   | (none)        | `npm i -g @agentclientprotocol/claude-agent-acp`     | Uses your Claude subscription via the Zed ACP bridge |
 | Gemini   | `gemini`      | `gemini`             | `["--acp"]`   | `npm i -g @google/gemini-cli`                        | Google Gemini CLI with ACP mode flag            |
-| Codex    | `codex`       | `npx`                | `["@zed-industries/codex-acp"]` | Requires `npx` (bundled with Node.js)  | Runs via npx; downloads on first use            |
-| OpenAI   | `openai`      | `openai-acp`         | (none)        | `pip install openai-acp` (hypothetical)              | Planned; not yet publicly available             |
-| Ollama   | `ollama`      | `ollama-acp`         | (none)        | `pip install ollama-acp` (hypothetical)              | Planned; for local model inference via Ollama   |
+| Codex    | `codex`       | `codex-acp`          | (none)        | `npm i -g @agentclientprotocol/codex-acp`            | OpenAI Codex via the ACP bridge                 |
 
 To use a built-in backend, reference it by name when creating an agent:
 
@@ -243,7 +241,7 @@ from acp_agent_framework import Agent, BackendConfig, BackendRegistry, serve
 
 # Register custom backend at module level
 BackendRegistry().register("local-llama", BackendConfig(
-    command="ollama-acp",
+    command="my-local-agent",
     args=["--model", "llama3"],
     timeout=180.0,
 ))

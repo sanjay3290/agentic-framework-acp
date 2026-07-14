@@ -2488,13 +2488,13 @@ from acp_agent_framework import BackendRegistry, BackendConfig, Agent
 
 registry = BackendRegistry()
 
-# Register a local Ollama backend
+# Register a local agent binary as a custom backend
 registry.register(
     "local-llama",
     BackendConfig(
-        command="ollama-acp",
+        command="my-local-agent",
         args=["--model", "llama3"],
-        env={"OLLAMA_HOST": "http://localhost:11434"},
+        env={"MY_AGENT_HOST": "http://localhost:11434"},
         timeout=60.0,
         max_retries=2,
         retry_base_delay=0.5,

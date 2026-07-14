@@ -11,10 +11,8 @@ class BackendConfig(BaseModel):
 
 DEFAULT_BACKENDS: dict[str, BackendConfig] = {
     "claude": BackendConfig(command="claude-agent-acp"),
-    "gemini": BackendConfig(command="gemini", args=["--experimental-acp"]),
+    "gemini": BackendConfig(command="gemini", args=["--acp"]),
     "codex": BackendConfig(command="codex-acp"),
-    "openai": BackendConfig(command="openai-acp"),
-    "ollama": BackendConfig(command="ollama-acp"),
 }
 
 class BackendRegistry:

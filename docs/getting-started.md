@@ -96,16 +96,14 @@ The framework delegates actual LLM inference to an ACP-compatible backend. You n
 
 | Backend | Command Used | How to Install |
 |---------|-------------|----------------|
-| Claude | `claude-agent-acp` | `npm i -g @zed-industries/claude-agent-acp` |
+| Claude | `claude-agent-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` |
 | Gemini | `gemini --acp` | `npm i -g @google/gemini-cli` |
-| Codex | `npx @zed-industries/codex-acp` | Requires `npx` (comes with Node.js) |
-| OpenAI | `openai-acp` | `pip install openai-acp` (community package) |
-| Ollama | `ollama-acp` | `pip install ollama-acp` (community package) |
+| Codex | `codex-acp` | `npm i -g @agentclientprotocol/codex-acp` |
 
 For this guide, we will use Claude as the backend. Install it with:
 
 ```bash
-npm install -g @zed-industries/claude-agent-acp
+npm install -g @agentclientprotocol/claude-agent-acp
 ```
 
 Verify the installation:

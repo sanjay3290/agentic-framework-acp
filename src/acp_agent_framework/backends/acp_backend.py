@@ -1,6 +1,7 @@
 """ACP backend client - spawns and communicates with ACP agents."""
 import asyncio
 import os
+import shutil
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 import acp
@@ -80,6 +81,12 @@ class AcpBackend:
         return self._process is not None and self._process.returncode is None
 
     async def start(self) -> None:
+        if shutil.which(self.config.command) is None:
+            raise RuntimeError(
+                f"Backend command not found: {self.config.command!r}. "
+                "Is the backend CLI installed and on your PATH?"
+            )
+
         env_args = {}
         if self.config.env:
             env_args["env"] = {**os.environ, **self.config.env}
