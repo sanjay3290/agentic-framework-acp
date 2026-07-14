@@ -72,8 +72,22 @@ class FrameworkAgent:
                 text_parts.append(block.text)
         user_input = "\n".join(text_parts)
         ctx.set_input(user_input)
+        streamed = False
         async for event in self._agent.run(ctx):
-            if self._connection and event.type == "message":
+            if not self._connection:
+                continue
+            if event.type == "stream_chunk":
+                update = helpers.update_agent_message_text(str(event.content))
+                await self._connection.session_update(session_id=session_id, update=update)
+                streamed = True
+            elif event.type == "message":
+                # Each agent run emits its stream chunks then one final message.
+                # If chunks were forwarded, the message is their concatenation —
+                # skip it, but only once, so a later agent in a pipeline still
+                # gets its message through.
+                if streamed:
+                    streamed = False
+                    continue
                 update = helpers.update_agent_message_text(str(event.content))
                 await self._connection.session_update(session_id=session_id, update=update)
         return acp.PromptResponse(stop_reason="end_turn")

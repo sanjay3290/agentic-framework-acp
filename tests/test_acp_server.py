@@ -18,6 +18,17 @@ class MockAgent(BaseAgent):
         yield Event(author=self.name, type="message", content=self._output)
 
 
+class StreamingMockAgent(BaseAgent):
+    name: str = "stream-test"
+
+    async def run(self, ctx: Context):
+        yield Event(author=self.name, type="stream_chunk", content="Hello")
+        yield Event(author=self.name, type="stream_chunk", content=" world")
+        full = "Hello world"
+        ctx.set_output(full)
+        yield Event(author=self.name, type="message", content=full)
+
+
 @pytest.mark.asyncio
 async def test_framework_agent_initialize():
     agent = MockAgent("test", "hello")
@@ -76,3 +87,61 @@ async def test_framework_agent_prompt_delivers_session_updates():
     assert isinstance(update, acp.schema.AgentMessageChunk)
     assert update.content.text == "hello response"
     assert result.stop_reason == "end_turn"
+
+
+@pytest.mark.asyncio
+async def test_framework_agent_prompt_forwards_stream_chunks_skips_final_message():
+    agent = StreamingMockAgent()
+    fw_agent = FrameworkAgent(agent)
+    fake_conn = FakeAgentConnection()
+    fw_agent.on_connect(fake_conn)
+    session = await fw_agent.new_session(cwd="/tmp/test")
+    result = await fw_agent.prompt(
+        prompt=[acp.schema.TextContentBlock(type="text", text="Hi")],
+        session_id=session.session_id,
+    )
+    assert len(fake_conn.calls) == 2
+    texts = [update.content.text for _, update in fake_conn.calls]
+    assert texts == ["Hello", " world"]
+    for _, update in fake_conn.calls:
+        assert isinstance(update, acp.schema.AgentMessageChunk)
+    assert result.stop_reason == "end_turn"
+
+
+@pytest.mark.asyncio
+async def test_framework_agent_prompt_non_streaming_still_forwards_message():
+    agent = MockAgent("test", "only final")
+    fw_agent = FrameworkAgent(agent)
+    fake_conn = FakeAgentConnection()
+    fw_agent.on_connect(fake_conn)
+    session = await fw_agent.new_session(cwd="/tmp/test")
+    await fw_agent.prompt(
+        prompt=[acp.schema.TextContentBlock(type="text", text="Hi")],
+        session_id=session.session_id,
+    )
+    assert len(fake_conn.calls) == 1
+    assert fake_conn.calls[0][1].content.text == "only final"
+
+
+@pytest.mark.asyncio
+async def test_framework_agent_pipeline_streaming_then_plain_agent():
+    """A later agent's message must not be suppressed by an earlier agent's chunks."""
+    class MixedPipelineAgent(BaseAgent):
+        name: str = "pipeline"
+
+        async def run(self, ctx: Context):
+            yield Event(author="streamer", type="stream_chunk", content="chunk-a")
+            yield Event(author="streamer", type="stream_chunk", content="chunk-b")
+            yield Event(author="streamer", type="message", content="chunk-achunk-b")
+            yield Event(author="plain", type="message", content="second agent output")
+
+    fw_agent = FrameworkAgent(MixedPipelineAgent())
+    fake_conn = FakeAgentConnection()
+    fw_agent.on_connect(fake_conn)
+    session = await fw_agent.new_session(cwd="/tmp/test")
+    await fw_agent.prompt(
+        prompt=[acp.schema.TextContentBlock(type="text", text="Hi")],
+        session_id=session.session_id,
+    )
+    texts = [update.content.text for _, update in fake_conn.calls]
+    assert texts == ["chunk-a", "chunk-b", "second agent output"]
