@@ -156,7 +156,7 @@ class Agent(BaseAgent):
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | `str` | *required* | Name of the backend to use. Built-in options: `"claude"`, `"gemini"`, `"codex"`, `"openai"`, `"ollama"`. Custom backends can be registered via `BackendRegistry`. |
+| `backend` | `str` | *required* | Name of the backend to use. Built-in options include `"claude"`, `"gemini"`, `"codex"`, `"copilot"`, `"opencode"`, `"goose"`, `"qwen"`, `"cursor"`, `"grok"`, and more (14 total). Custom backends can be registered via `BackendRegistry`. |
 | `instruction` | `Union[str, Callable]` | *required* | The system instruction. Can be a static string or a callable that receives a `Context` object and returns a string. Dynamic instructions enable reading from state at runtime. |
 | `tools` | `list[Any]` | `[]` | List of tool instances (typically `FunctionTool` or custom `BaseTool` subclasses). These are bridged to the LLM backend via an MCP server that the agent starts automatically. |
 | `skills` | `list[str]` | `[]` | List of skill names to load from `.agents/skills/` directories. Skills are SKILL.md files whose instruction text is prepended to the agent's instruction. Dependencies are resolved in topological order. |
@@ -194,6 +194,17 @@ The `BackendRegistry` singleton comes pre-configured with these backends:
 | `"claude"` | `claude-agent-acp` | (none) |
 | `"gemini"` | `gemini` | `["--acp"]` |
 | `"codex"` | `codex-acp` | (none) |
+| `"copilot"` | `copilot` | `["--acp"]` |
+| `"opencode"` | `opencode` | `["acp"]` |
+| `"goose"` | `goose` | `["acp"]` |
+| `"qwen"` | `qwen` | `["--acp"]` |
+| `"cursor"` | `cursor-agent` | `["acp"]` |
+| `"grok"` | `grok` | `["agent", "stdio"]` |
+| `"cline"` | `cline` | `["--acp"]` |
+| `"auggie"` | `auggie` | `["--acp"]` |
+| `"kilo"` | `kilo` | `["acp"]` |
+| `"devin"` | `devin` | `["acp"]` |
+| `"kimi"` | `kimi` | `["acp"]` |
 
 Register a custom backend:
 

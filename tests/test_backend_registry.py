@@ -7,6 +7,17 @@ def test_default_backends_registered():
     assert "claude" in backends
     assert "gemini" in backends
     assert "codex" in backends
+    assert "copilot" in backends
+    assert "opencode" in backends
+    assert "goose" in backends
+    assert "qwen" in backends
+    assert "cursor" in backends
+    assert "grok" in backends
+    assert "cline" in backends
+    assert "auggie" in backends
+    assert "kilo" in backends
+    assert "devin" in backends
+    assert "kimi" in backends
     assert "openai" not in backends
     assert "ollama" not in backends
 
@@ -26,6 +37,19 @@ def test_codex_backend_config():
     config = registry.get("codex")
     assert config.command == "codex-acp"
     assert config.args == []
+
+def test_new_default_backend_configs():
+    registry = BackendRegistry()
+    copilot = registry.get("copilot")
+    assert copilot.command == "copilot"
+    assert copilot.args == ["--acp"]
+    grok = registry.get("grok")
+    assert grok.command == "grok"
+    assert grok.args == ["agent", "stdio"]
+    opencode = registry.get("opencode")
+    assert opencode.command == "opencode"
+    assert opencode.args == ["acp"]
+
 
 def test_register_custom_backend():
     registry = BackendRegistry()

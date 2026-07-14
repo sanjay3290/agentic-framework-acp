@@ -37,7 +37,7 @@ The protocol defines how to:
 
 ### What does the framework do?
 
-The framework sits between ACP clients and LLM backends. You define your agent logic in Python, pick a backend (Claude, Gemini, Codex, OpenAI, Ollama), and the framework handles all ACP compliance, session management, streaming, and orchestration for you.
+The framework sits between ACP clients and LLM backends. You define your agent logic in Python, pick a backend (Claude, Gemini, Codex, GitHub Copilot, OpenCode, Goose, and more), and the framework handles all ACP compliance, session management, streaming, and orchestration for you.
 
 ```
 ACP Clients (Zed, VS Code, etc.)
@@ -51,14 +51,14 @@ ACP Clients (Zed, VS Code, etc.)
         |
         |  ACP (JSON-RPC 2.0 over stdio)
         v
-LLM Backends (Claude, Gemini, Codex, OpenAI, Ollama)
+LLM Backends (Claude, Gemini, Codex, GitHub Copilot, OpenCode, Goose, and more)
 ```
 
 The framework also supports HTTP transport, so you can serve your agent as a REST API with Server-Sent Events (SSE) for streaming -- useful for web applications, custom UIs, or any HTTP client.
 
 ### Key features
 
-- **Backend-agnostic**: Swap between Claude, Gemini, Codex, OpenAI, or Ollama by changing a single string.
+- **Backend-agnostic**: Swap between Claude, Gemini, Codex, GitHub Copilot, OpenCode, Goose, and ten other backends by changing a single string.
 - **No API keys required**: The framework uses your existing CLI-based AI subscriptions (e.g., `claude-agent-acp`, `gemini --acp`).
 - **Multiple agent types**: Simple agents, sequential pipelines, routers, and tool agents.
 - **Custom tools**: Wrap any Python function as a tool that the LLM can invoke via MCP (Model Context Protocol).
@@ -99,6 +99,17 @@ The framework delegates actual LLM inference to an ACP-compatible backend. You n
 | Claude | `claude-agent-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` |
 | Gemini | `gemini --acp` | `npm i -g @google/gemini-cli` |
 | Codex | `codex-acp` | `npm i -g @agentclientprotocol/codex-acp` |
+| GitHub Copilot | `copilot --acp` | `npm i -g @github/copilot` |
+| OpenCode | `opencode acp` | `npm i -g opencode-ai` |
+| Goose | `goose acp` | [block.github.io/goose](https://block.github.io/goose) |
+| Qwen Code | `qwen --acp` | `npm i -g @qwen-code/qwen-code` |
+| Cursor | `cursor-agent acp` | [cursor.com/cli](https://cursor.com/cli) |
+| Grok Build | `grok agent stdio` | `npm i -g @xai-official/grok` |
+| Cline | `cline --acp` | `npm i -g cline` |
+| Auggie | `auggie --acp` | `npm i -g @augmentcode/auggie` |
+| Kilo | `kilo acp` | `npm i -g @kilocode/cli` |
+| Devin | `devin acp` | [devin.ai](https://devin.ai) |
+| Kimi CLI | `kimi acp` | [kimi.com](https://www.kimi.com) |
 
 For this guide, we will use Claude as the backend. Install it with:
 

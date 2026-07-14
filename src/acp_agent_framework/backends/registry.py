@@ -13,6 +13,17 @@ DEFAULT_BACKENDS: dict[str, BackendConfig] = {
     "claude": BackendConfig(command="claude-agent-acp"),
     "gemini": BackendConfig(command="gemini", args=["--acp"]),
     "codex": BackendConfig(command="codex-acp"),
+    "copilot": BackendConfig(command="copilot", args=["--acp"]),
+    "opencode": BackendConfig(command="opencode", args=["acp"]),
+    "goose": BackendConfig(command="goose", args=["acp"]),
+    "qwen": BackendConfig(command="qwen", args=["--acp"]),
+    "cursor": BackendConfig(command="cursor-agent", args=["acp"]),
+    "grok": BackendConfig(command="grok", args=["agent", "stdio"]),
+    "cline": BackendConfig(command="cline", args=["--acp"]),
+    "auggie": BackendConfig(command="auggie", args=["--acp"]),
+    "kilo": BackendConfig(command="kilo", args=["acp"]),
+    "devin": BackendConfig(command="devin", args=["acp"]),
+    "kimi": BackendConfig(command="kimi", args=["acp"]),
 }
 
 class BackendRegistry:

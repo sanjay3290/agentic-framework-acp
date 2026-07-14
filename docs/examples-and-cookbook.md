@@ -2510,7 +2510,7 @@ agent = Agent(
 
 # List all available backends
 print("Available backends:", registry.list())
-# Output: Available backends: ['claude', 'gemini', 'codex', 'openai', 'ollama', 'local-llama']
+# Output: Available backends: ['claude', 'gemini', 'codex', 'copilot', 'opencode', 'goose', 'qwen', 'cursor', 'grok', 'cline', 'auggie', 'kilo', 'devin', 'kimi', 'local-llama']
 ```
 
 `BackendRegistry` is a singleton -- registrations persist across all modules in the process.

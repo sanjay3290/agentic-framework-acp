@@ -56,13 +56,26 @@ Framework                          Backend Process
 
 ## Built-in Backends
 
-The framework ships with three pre-registered backends. These are defined in `DEFAULT_BACKENDS` within the `BackendRegistry` and are available immediately without any registration code.
+The framework ships with fourteen pre-registered backends. These are defined in `DEFAULT_BACKENDS` within the `BackendRegistry` and are available immediately without any registration code.
 
-| Backend  | Registry Name | Command              | Arguments     | Install Command                                     | Notes                                          |
-|----------|---------------|----------------------|---------------|------------------------------------------------------|-------------------------------------------------|
-| Claude   | `claude`      | `claude-agent-acp`   | (none)        | `npm i -g @agentclientprotocol/claude-agent-acp`     | Uses your Claude subscription via the Zed ACP bridge |
-| Gemini   | `gemini`      | `gemini`             | `["--acp"]`   | `npm i -g @google/gemini-cli`                        | Google Gemini CLI with ACP mode flag            |
-| Codex    | `codex`       | `codex-acp`          | (none)        | `npm i -g @agentclientprotocol/codex-acp`            | OpenAI Codex via the ACP bridge                 |
+| Backend  | Registry Name | Command              | Arguments              | Install Command                                     | Notes                                          |
+|----------|---------------|----------------------|------------------------|------------------------------------------------------|-------------------------------------------------|
+| Claude   | `claude`      | `claude-agent-acp`   | (none)                 | `npm i -g @agentclientprotocol/claude-agent-acp`     | Uses your Claude subscription via the Zed ACP bridge |
+| Gemini   | `gemini`      | `gemini`             | `["--acp"]`            | `npm i -g @google/gemini-cli`                        | Google Gemini CLI with ACP mode flag            |
+| Codex    | `codex`       | `codex-acp`          | (none)                 | `npm i -g @agentclientprotocol/codex-acp`            | OpenAI Codex via the ACP bridge                 |
+| GitHub Copilot | `copilot` | `copilot`            | `["--acp"]`            | `npm i -g @github/copilot`                           | GitHub Copilot CLI                              |
+| OpenCode | `opencode`    | `opencode`           | `["acp"]`              | `npm i -g opencode-ai`                               | OpenCode CLI                                    |
+| Goose    | `goose`       | `goose`              | `["acp"]`              | [block.github.io/goose](https://block.github.io/goose) | Block's Goose                                 |
+| Qwen Code | `qwen`       | `qwen`               | `["--acp"]`            | `npm i -g @qwen-code/qwen-code`                      | Alibaba Qwen Code                               |
+| Cursor   | `cursor`      | `cursor-agent`       | `["acp"]`              | [cursor.com/cli](https://cursor.com/cli)             | Cursor CLI agent                                |
+| Grok Build | `grok`      | `grok`               | `["agent", "stdio"]`   | `npm i -g @xai-official/grok`                        | xAI Grok Build CLI                              |
+| Cline    | `cline`       | `cline`              | `["--acp"]`            | `npm i -g cline`                                     | Cline CLI                                       |
+| Auggie   | `auggie`      | `auggie`             | `["--acp"]`            | `npm i -g @augmentcode/auggie`                       | Augment Code CLI                                |
+| Kilo     | `kilo`        | `kilo`               | `["acp"]`              | `npm i -g @kilocode/cli`                             | Kilo Code CLI                                   |
+| Devin    | `devin`       | `devin`              | `["acp"]`              | [devin.ai](https://devin.ai)                         | Cognition Devin CLI                             |
+| Kimi CLI | `kimi`        | `kimi`               | `["acp"]`              | [kimi.com](https://www.kimi.com)                     | Moonshot Kimi CLI                               |
+
+For the full list of ACP agents, see the [ACP Registry](https://github.com/agentclientprotocol/registry); any agent can be used via `BackendRegistry().register(...)`.
 
 To use a built-in backend, reference it by name when creating an agent:
 
@@ -71,7 +84,7 @@ from acp_agent_framework import Agent
 
 agent = Agent(
     name="my-agent",
-    backend="claude",  # or "gemini", "codex", "openai", "ollama"
+    backend="claude",  # or "copilot", "opencode", "goose", ... (see Built-in Backends)
     instruction="You are a helpful assistant.",
 )
 ```
@@ -219,7 +232,7 @@ If the name is unknown:
 
 ```python
 registry.get("nonexistent")
-# KeyError: "Unknown backend: 'nonexistent'. Available: ['claude', 'gemini', 'codex', 'openai', 'ollama']"
+# KeyError: "Unknown backend: 'nonexistent'. Available: ['claude', 'gemini', 'codex', 'copilot', 'opencode', 'goose', 'qwen', 'cursor', 'grok', 'cline', 'auggie', 'kilo', 'devin', 'kimi']"
 ```
 
 #### `list() -> list[str]`
@@ -228,7 +241,7 @@ Returns a list of all registered backend names.
 
 ```python
 print(registry.list())
-# ['claude', 'gemini', 'codex', 'openai', 'ollama', 'my-backend']
+# ['claude', 'gemini', 'codex', 'copilot', 'opencode', 'goose', 'qwen', 'cursor', 'grok', 'cline', 'auggie', 'kilo', 'devin', 'kimi', 'my-backend']
 ```
 
 ### Registration Timing
@@ -909,7 +922,7 @@ registry = BackendRegistry()
 
 # List all available backends
 print("Available backends:", registry.list())
-# ['claude', 'gemini', 'codex', 'openai', 'ollama']
+# ['claude', 'gemini', 'codex', 'copilot', 'opencode', 'goose', 'qwen', 'cursor', 'grok', 'cline', 'auggie', 'kilo', 'devin', 'kimi']
 
 # Inspect a backend's configuration
 claude_config = registry.get("claude")

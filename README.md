@@ -272,6 +272,19 @@ acp-agent run my_agent.agent:agent -t http -p 8000 # Run as HTTP server
 | **Claude** | `claude-agent-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` |
 | **Gemini** | `gemini --acp` | `npm i -g @google/gemini-cli` |
 | **Codex** | `codex-acp` | `npm i -g @agentclientprotocol/codex-acp` |
+| **GitHub Copilot** | `copilot --acp` | `npm i -g @github/copilot` |
+| **OpenCode** | `opencode acp` | `npm i -g opencode-ai` |
+| **Goose** | `goose acp` | [block.github.io/goose](https://block.github.io/goose) |
+| **Qwen Code** | `qwen --acp` | `npm i -g @qwen-code/qwen-code` |
+| **Cursor** | `cursor-agent acp` | [cursor.com/cli](https://cursor.com/cli) |
+| **Grok Build** | `grok agent stdio` | `npm i -g @xai-official/grok` |
+| **Cline** | `cline --acp` | `npm i -g cline` |
+| **Auggie** | `auggie --acp` | `npm i -g @augmentcode/auggie` |
+| **Kilo** | `kilo acp` | `npm i -g @kilocode/cli` |
+| **Devin** | `devin acp` | [devin.ai](https://devin.ai) |
+| **Kimi CLI** | `kimi acp` | [kimi.com](https://www.kimi.com) |
+
+Any other agent from the [ACP Registry](https://github.com/agentclientprotocol/registry) can be used by registering its launch command.
 
 Register custom backends:
 
