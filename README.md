@@ -43,7 +43,8 @@ The first open-source Python framework for building agents that speak the
 | **Guardrails** | Input/output validation hooks — redact PII, block injections |
 | **Skills** | Load reusable agent capabilities per [agentskills.io](https://agentskills.io) spec |
 | **Serving** | ACP stdio (editors), HTTP/SSE (web apps), CLI |
-| **Session Persistence** | Save and restore sessions as JSON |
+| **State Persistence** | JsonSessionStore utility to save/restore session state as JSON |
+| **Session-Scoped Backends** | Backend processes spawn once per session and stay warm across turns |
 
 ## Install
 
@@ -307,7 +308,7 @@ registry.register("my-backend", BackendConfig(
 ## Testing
 
 ```bash
-# Unit tests (158 tests)
+# Unit tests (174 tests)
 pytest tests/ -v
 
 # Integration tests (requires backends installed)

@@ -25,11 +25,11 @@ Streaming allows an agent to yield text incrementally as the backend produces it
 
 When you set `stream=True` on an `Agent`, the `run()` method changes behavior in two ways:
 
-1. **During generation**: The agent calls `AcpBackend.prompt_stream()` instead of `AcpBackend.prompt()`. For each text chunk received via ACP session updates, the agent yields an `Event` with `type="stream_chunk"` and `content` set to that individual chunk of text.
+1. **During generation**: The agent calls `AcpBackend.prompt_stream()` instead of `AcpBackend.prompt()`. Chunks are yielded **live** while the backend is still generating: session updates fan out through an asyncio queue as they arrive. For each user-visible text chunk, the agent yields an `Event` with `type="stream_chunk"` and `content` set to that chunk.
 
 2. **After generation completes**: All chunks are collected internally and joined into the full response string. The agent then yields a final `Event` with `type="message"` and `content` set to the complete response. This final event is identical to what a non-streaming agent would produce.
 
-The `AcpBackend.prompt_stream()` method works by issuing a standard ACP `PromptRequest` and then iterating over the accumulated session updates, yielding each update that carries a `.text` attribute. The granularity of chunks depends on the underlying ACP agent (e.g., Claude Code typically streams token-by-token).
+Only `agent_message_chunk` updates count as response text. Agent thought chunks (model reasoning), tool-call updates, and plans are excluded from both `prompt()` results and streamed chunks. The granularity of message chunks depends on the underlying ACP agent (e.g., token-by-token vs larger fragments).
 
 ### API Reference
 
@@ -147,11 +147,13 @@ Multi-turn mode allows an agent to maintain conversation history across multiple
 
 When `multi_turn=True` is set on an `Agent`:
 
-1. **Before prompting**: The agent checks `ctx.get_history()` for existing conversation messages. If history exists, it formats each message as `"Role: content"` and appends the formatted history into the prompt sent to the backend. The prompt is assembled as: `instruction + history + current user input`, joined by double newlines.
+1. **On a warm backend** (same session, process still running): only the new user input is sent. The backend's own ACP session retains the conversation, so the framework does not resend prior turns.
 
-2. **After receiving the response**: The agent calls `ctx.add_message("user", user_input)` and `ctx.add_message("assistant", response)` to record the exchange. These messages persist in the `Context` object for subsequent `run()` calls.
+2. **On a fresh backend** (first run for this agent on the Context, or after crash-respawn / restore): the system instruction (and skills block) is sent once, and if history already exists in `ctx`, it is formatted as `"Role: content"` lines and included so the new process can restore context. After that, the backend session carries continuity.
 
-The conversation history lives entirely in the `Context` object. As long as you reuse the same `Context` across calls, the history accumulates. You can inspect, manipulate, or clear history at any time.
+3. **After receiving the response**: The agent calls `ctx.add_message("user", user_input)` and `ctx.add_message("assistant", response)` to record the exchange in `Context` for inspection, persistence, and restore-after-close.
+
+History in `ctx` is the framework's record. Continuity across warm turns is handled by the backend session; history is only replayed into the prompt when a fresh backend process is created over existing history.
 
 ### Context History API
 
@@ -281,7 +283,7 @@ asyncio.run(main())
 - History is stored as a flat list of `{"role": str, "content": str}` dicts inside the `Context` instance.
 - `get_history()` returns a **copy** of the list, so modifying the returned list does not affect the context.
 - When `multi_turn=False` (the default), history is neither read nor written -- the agent is stateless between runs.
-- The entire history is included in every prompt. For very long conversations, this will consume the backend's context window. You are responsible for trimming or summarizing history if it grows too large.
+- On a warm backend, history is **not** resent in the prompt; context-window use is governed by the backend's own session. Full-history replay only happens when a fresh backend process is created over existing history (restore-after-close or crash-respawn). For very long conversations, trim or summarize `ctx` history before that restore path if you need to bound restore prompts.
 
 ---
 
@@ -299,7 +301,7 @@ A `Guardrail` wraps a callable with signature `fn(text: str) -> Optional[str]`:
 
 Guardrails are applied sequentially in list order. The output of one guardrail becomes the input of the next. This means transformations compose: if guardrail A redacts secrets and guardrail B lowercases text, the final text is lowercased with secrets redacted.
 
-Input guardrails run after the full prompt is assembled (instruction + history + user input) but before it is sent to the backend. Output guardrails run on the backend response before it is stored in context or yielded as an event.
+Input guardrails run after the prompt is assembled (on a warm backend this is typically just the new user input; instruction and history appear only on the first prompt of a backend session) but before it is sent to the backend. Output guardrails run on the backend response before it is stored in context or yielded as an event.
 
 ### API Reference
 
@@ -474,7 +476,7 @@ asyncio.run(main())
 
 ### Key Implementation Details
 
-- Input guardrails operate on the fully assembled prompt string (instruction + history + user input joined by `\n\n`).
+- Input guardrails operate on the assembled prompt string (user input on warm turns; instruction and optional history replay only on the first prompt of a backend session).
 - Output guardrails operate on the raw backend response string.
 - When streaming is enabled, output guardrails run on the **concatenated** complete response, after all `stream_chunk` events have been yielded but before the final `message` event. If an output guardrail raises `GuardrailError`, the stream chunks will already have been yielded to the consumer.
 - Guardrails are synchronous functions. If you need async validation (e.g., calling an external API), perform the async work outside the guardrail and capture the result in a closure.

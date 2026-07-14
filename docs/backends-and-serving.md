@@ -29,27 +29,25 @@ This architecture provides several key properties:
 
 - **Subscription reuse** -- You use your existing AI subscriptions (Claude Pro, Gemini, etc.) through their official CLI tools. No API keys or per-token billing required.
 - **Backend agnosticism** -- Agents are defined independently of which LLM powers them. Switching from Claude to Gemini is a one-line change (`backend="gemini"`).
-- **Process isolation** -- Each agent run spawns a fresh backend process. If the backend crashes, the framework catches it cleanly without corrupting shared state.
+- **Session-scoped processes** -- A backend CLI process is spawned once per (Context, agent) pair on the first `run()`, stored on the Context, and reused across subsequent turns. A dead process is detected via `is_running` and transparently respawned. A prompt error tears down that backend session so the next run starts fresh. Call `await ctx.close()` to release all backends and MCP bridges held by a Context.
 - **Protocol standardization** -- All backends speak the same ACP protocol, so the framework treats them uniformly regardless of the underlying model.
 
-The communication flow for a single agent prompt looks like this:
+The communication flow for a session looks like this (spawn/initialize only on first use or after respawn):
 
 ```
 Framework                          Backend Process
    |                                     |
-   |-- spawn subprocess (command+args) ->|
-   |                                     |
+   |-- spawn subprocess (first run) ---->|
    |-- initialize (JSON-RPC) ----------->|
    |<------------ InitializeResponse ----|
-   |                                     |
    |-- new_session (JSON-RPC) ---------->|
    |<------------ NewSessionResponse ----|
    |                                     |
-   |-- prompt (JSON-RPC) --------------->|
-   |<------------ session_update --------|  (one or more)
+   |-- prompt (JSON-RPC) --------------->|  (warm turns: prompt only)
+   |<------------ session_update --------|  (live, one or more)
    |<------------ PromptResponse --------|
    |                                     |
-   |-- close / terminate --------------->|
+   |-- stop on ctx.close() / error ----->|
 ```
 
 ---
@@ -322,7 +320,7 @@ Raises `RuntimeError` if `start()` has not been called.
 
 Sends a prompt to the backend and returns the complete response text. This method includes retry logic (see [Retry Logic](#retry-logic)).
 
-The prompt is sent as a `TextContentBlock` within a `PromptRequest`. The backend responds with zero or more `session_update` notifications containing text fragments, followed by a `PromptResponse`. The method collects all text fragments and joins them into a single string.
+The prompt is sent as a `TextContentBlock` within a `PromptRequest`. The backend responds with zero or more `session_update` notifications, followed by a `PromptResponse`. Only `agent_message_chunk` updates are collected as response text (thought chunks, tool calls, and plans are excluded) and joined into a single string.
 
 ```python
 response = await backend.prompt(session_id, "Explain how async/await works in Python.")
@@ -332,14 +330,14 @@ The call is wrapped in `asyncio.wait_for` with `config.timeout` seconds. If the 
 
 #### `prompt_stream(session_id: str, text: str) -> AsyncGenerator[str, None]`
 
-Sends a prompt and yields text chunks as they arrive. Unlike `prompt()`, this method does **not** include retry logic -- it is intended for streaming scenarios where partial output is acceptable.
+Sends a prompt and yields text chunks **live** while the backend is still generating. Session updates fan out through an asyncio queue as they arrive. Unlike `prompt()`, this method does **not** include retry logic -- it is intended for streaming scenarios where partial output is acceptable.
+
+Only `agent_message_chunk` updates are yielded as text. Agent thought chunks (model reasoning), tool-call updates, and plans are excluded.
 
 ```python
 async for chunk in backend.prompt_stream(session_id, "Write a haiku."):
     print(chunk, end="", flush=True)
 ```
-
-Note: In the current implementation, streaming collects all updates after the prompt completes (since ACP sends updates as notifications during prompt processing). True incremental streaming depends on the backend's update frequency.
 
 #### `stop() -> None`
 
@@ -373,7 +371,7 @@ The `_MinimalClient` class implements the ACP client interface that the backend 
 
 | Callback            | Behavior                                                                 |
 |---------------------|--------------------------------------------------------------------------|
-| `session_update`    | Stores the update in an internal list for later collection               |
+| `session_update`    | Stores the update; if streaming, also puts it on the live asyncio queue  |
 | `request_permission`| Auto-approves by selecting the first available option                     |
 | `read_text_file`    | Reads the file from the local filesystem; raises `-32002` if not found   |
 | `write_text_file`   | Writes the file to the local filesystem                                  |
@@ -570,7 +568,7 @@ Retrieves information about an existing session.
 
 ##### DELETE /api/sessions/{session_id}
 
-Deletes a session and frees its resources.
+Deletes a session and frees its resources. The handler calls `await ctx.close()`, which stops any backend processes and MCP bridges held by that session.
 
 **Response (200):**
 ```json
@@ -696,6 +694,27 @@ while (true) {
   }
 }
 ```
+
+### Context.close() — releasing backends
+
+When you embed agents programmatically (outside `serve()`), backend processes stay warm for the life of the `Context`. Call `await ctx.close()` when you are done so subprocesses and MCP bridges are stopped:
+
+```python
+import asyncio
+from acp_agent_framework import Agent, Context
+
+async def main():
+    agent = Agent(name="assistant", backend="claude", instruction="Be helpful.")
+    ctx = Context(session_id="local-1", cwd=".")
+    ctx.set_input("Hello")
+    async for event in agent.run(ctx):
+        print(event.content)
+    await ctx.close()  # stop backend process(es) held by this session
+
+asyncio.run(main())
+```
+
+HTTP and ACP servers call `close()` when a session is deleted or torn down; you only need to call it yourself in long-lived scripts that construct `Context` directly.
 
 ### Web UI Dashboard
 
@@ -981,11 +1000,11 @@ if __name__ == "__main__":
 
 The flow with tools:
 
-1. `Agent.run()` detects `self.tools` is non-empty.
+1. On the first run for this agent on the Context, `Agent.run()` detects `self.tools` is non-empty.
 2. It creates a `McpBridge` that exposes the tools as an MCP server.
-3. The MCP server configuration is passed to `backend.new_session()` via `mcp_servers`.
-4. The backend can invoke the tools during prompt processing.
-5. After the run completes, both the backend and the MCP bridge are stopped.
+3. The MCP server configuration is passed to `backend.new_session()` via `mcp_servers`; the backend session (and bridge) are stored on the Context.
+4. The backend can invoke the tools during prompt processing across warm turns.
+5. Resources are released when `await ctx.close()` is called (HTTP `DELETE /api/sessions/{id}` does this automatically).
 
 ### Example 6: End-to-End CLI Workflow
 

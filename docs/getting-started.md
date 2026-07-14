@@ -537,7 +537,7 @@ persistable = state.get_persistable()
 
 ### Conversation history (multi-turn)
 
-When an `Agent` has `multi_turn=True`, it automatically records user inputs and assistant responses in the context history. Subsequent prompts in the same session include the full conversation:
+When an `Agent` has `multi_turn=True`, it automatically records user inputs and assistant responses in the context history. On a warm backend only the new user input is sent (the backend session retains the conversation); history is replayed into the prompt only when a fresh backend process is created over existing history:
 
 ```python
 agent = Agent(
@@ -655,8 +655,9 @@ agent = Agent(
 When `multi_turn` is enabled:
 
 1. After each agent run, the user input and assistant response are appended to `ctx._history`.
-2. On subsequent runs in the same session, the full conversation history is included in the prompt sent to the backend.
-3. The LLM sees the entire conversation and can reference earlier messages.
+2. On subsequent runs with a **warm** backend process, only the new user input is sent — the backend's own session retains the conversation.
+3. History is replayed into the prompt only when a **fresh** backend process is created while history already exists (restore-after-close or crash-respawn).
+4. The LLM can reference earlier messages via the backend session (warm turns) or via the restored history (fresh process).
 
 This only works within a single session. If the session is destroyed (e.g., the editor disconnects), the history is lost unless you use session persistence.
 

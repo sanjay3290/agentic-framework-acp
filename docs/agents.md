@@ -162,7 +162,7 @@ class Agent(BaseAgent):
 | `skills` | `list[str]` | `[]` | List of skill names to load from `.agents/skills/` directories. Skills are SKILL.md files whose instruction text is prepended to the agent's instruction. Dependencies are resolved in topological order. |
 | `output_key` | `Optional[str]` | `None` | If set, the agent's response is stored in `ctx.state` under this key. Essential for chaining agents in a SequentialAgent pipeline. |
 | `stream` | `bool` | `False` | When `True`, the agent yields incremental `stream_chunk` events as tokens arrive from the backend, in addition to the final `message` event. |
-| `multi_turn` | `bool` | `False` | When `True`, the agent appends user input and assistant responses to `ctx.get_history()` and includes the full conversation history in subsequent prompts. |
+| `multi_turn` | `bool` | `False` | When `True`, the agent appends user input and assistant responses to `ctx.get_history()`. History is only replayed into the prompt when a fresh backend process is created over existing history; on a warm backend only the new user input is sent. |
 | `input_guardrails` | `list[Any]` | `[]` | List of `Guardrail` instances applied to the assembled prompt before it is sent to the backend. Guardrails can transform the text or raise `GuardrailError` to block execution. |
 | `output_guardrails` | `list[Any]` | `[]` | List of `Guardrail` instances applied to the response after it is received from the backend. Guardrails can transform or reject the output. |
 
@@ -171,19 +171,18 @@ class Agent(BaseAgent):
 When `agent.run(ctx)` is called, the following sequence occurs:
 
 1. **before_run hook** -- If `self.before_run` is set, it is awaited with the context.
-2. **MCP tool bridge** -- If `self.tools` is non-empty, an `McpBridge` is started. This spins up a local MCP server that exposes the tools to the ACP backend.
-3. **Backend startup** -- The configured backend process is spawned via `AcpBackend.start()`.
-4. **Session creation** -- A new ACP session is opened with `backend.new_session()`, passing the working directory and MCP server configuration.
-5. **Instruction resolution** -- `resolve_instruction(ctx)` is called. If skills are configured, they are loaded and their instructions are prepended to the base instruction in dependency order.
-6. **Prompt assembly** -- The instruction, conversation history (if `multi_turn`), and user input from `ctx.get_input()` are concatenated.
-7. **Input guardrails** -- Each input guardrail's `validate()` method is called on the assembled prompt.
-8. **LLM invocation** -- Either `backend.prompt()` (blocking) or `backend.prompt_stream()` (streaming) is called.
-9. **Output guardrails** -- Each output guardrail's `validate()` method is called on the response.
-10. **State updates** -- The response is stored via `ctx.set_output()`. If `output_key` is set, it is also written to `ctx.state`.
-11. **History tracking** -- If `multi_turn`, the user input and assistant response are appended to the conversation history.
-12. **Event emission** -- A `message` event is yielded (and `stream_chunk` events if streaming).
-13. **Cleanup** -- The backend and MCP bridge are stopped in a `finally` block.
-14. **after_run hook** -- If `self.after_run` is set, it is awaited with the context.
+2. **Backend session lookup** -- The agent looks up a stored backend session on the Context (`get_resource("backend:{name}")`). If a session exists but `is_running` is false, it is closed and discarded.
+3. **First-run spawn (if needed)** -- If no live session exists: optionally start an `McpBridge` when tools are configured; spawn the backend via `AcpBackend.start()`; open an ACP session with `new_session()`; store the session on the Context with `set_resource`. Later runs reuse this process.
+4. **Prompt assembly** -- On the first prompt of this backend session, the system instruction (and skills block) is resolved and prepended; if `multi_turn` and history already exists, history is replayed for restore. On subsequent warm turns, only the new user input is sent.
+5. **Input guardrails** -- Each input guardrail's `validate()` method is called on the assembled prompt.
+6. **LLM invocation** -- Either `backend.prompt()` (blocking) or `backend.prompt_stream()` (streaming) is called. On prompt error, the backend session is torn down so the next run starts fresh.
+7. **Output guardrails** -- Each output guardrail's `validate()` method is called on the response.
+8. **State updates** -- The response is stored via `ctx.set_output()`. If `output_key` is set, it is also written to `ctx.state`.
+9. **History tracking** -- If `multi_turn`, the user input and assistant response are appended to the conversation history.
+10. **Event emission** -- A `message` event is yielded (and `stream_chunk` events if streaming).
+11. **after_run hook** -- If `self.after_run` is set, it is awaited with the context.
+
+The backend process is **not** stopped after each run. Call `await ctx.close()` (or delete the HTTP session) to release backends and MCP bridges held by the Context.
 
 ### Available Backends
 
@@ -456,7 +455,7 @@ asyncio.run(main())
 
 ### Example: Multi-Turn Conversation
 
-When `multi_turn=True`, the agent tracks conversation history in the context. Each call to `run()` includes the full history in the prompt, and appends the new user/assistant exchange afterward.
+When `multi_turn=True`, the agent records conversation history in the context after each turn. On a warm backend only the new user input is sent (the backend session retains the conversation). History is replayed into the prompt only when a fresh backend process is created while history already exists (restore-after-close or crash-respawn).
 
 ```python
 import asyncio
@@ -1511,6 +1510,10 @@ class Context:
 | `add_message(role, content)` | `(str, str) -> None` | Appends to conversation history. Used by multi-turn agents. |
 | `get_history()` | `() -> list[dict[str, str]]` | Returns conversation history as a list of `{"role": ..., "content": ...}` dicts. |
 | `clear_history()` | `() -> None` | Clears conversation history. |
+| `get_resource(key)` | `(str) -> Any` | Returns a session-scoped resource (e.g. a live backend session), or `None`. |
+| `set_resource(key, value)` | `(str, Any) -> None` | Stores a session-scoped resource (backend processes, MCP bridges). |
+| `pop_resource(key)` | `(str) -> Any` | Removes and returns a resource, or `None` if missing. |
+| `close()` | `async () -> None` | Releases all resources (calls `aclose()` on each); use when embedding agents outside a server. |
 
 **Attributes:**
 
